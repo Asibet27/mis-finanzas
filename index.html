@@ -1,0 +1,1004 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Mis Finanzas</title>
+    
+    <!-- PWA Config -->
+    <meta name="theme-color" content="#4F46E5">
+    <meta name="mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <link rel="manifest" id="manifest-link">
+
+    <script>
+        const manifestData = {
+            "name": "Mis Finanzas Personales",
+            "short_name": "Finanzas",
+            "start_url": ".",
+            "display": "standalone",
+            "background_color": "#F3F4F6",
+            "theme_color": "#4F46E5",
+            "icons": [{
+                "src": "data:image/svg+xml;charset=utf-8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 512 512'><rect width='512' height='512' rx='100' fill='%234F46E5'/><text x='50%' y='50%' font-size='250' text-anchor='middle' dominant-baseline='central'>💰</text></svg>",
+                "sizes": "512x512",
+                "type": "image/svg+xml"
+            }]
+        };
+        const manifestBlob = new Blob([JSON.stringify(manifestData)], {type: 'application/manifest+json'});
+        document.addEventListener('DOMContentLoaded', () => {
+            document.getElementById('manifest-link').href = URL.createObjectURL(manifestBlob);
+        });
+
+        if ('serviceWorker' in navigator) {
+            const sw = `
+                self.addEventListener('install', e => self.skipWaiting());
+                self.addEventListener('activate', e => self.clients.claim());
+                self.addEventListener('fetch', e => {});
+            `;
+            const swBlob = new Blob([sw], {type: 'application/javascript'});
+            navigator.serviceWorker.register(URL.createObjectURL(swBlob)).catch(() => {});
+        }
+    </script>
+
+    <!-- Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    colors: {
+                        primary: '#4F46E5',
+                        success: '#10B981',
+                        danger: '#EF4444',
+                        background: '#F3F4F6',
+                        surface: '#FFFFFF'
+                    }
+                }
+            }
+        }
+    </script>
+    <!-- FontAwesome -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <!-- Chart.js -->
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap');
+        body { font-family: 'Inter', sans-serif; -webkit-tap-highlight-color: transparent; }
+        .tab-content { display: none; opacity: 0; transition: opacity 0.3s ease; }
+        .tab-content.active { display: block; opacity: 1; animation: fadeIn 0.3s ease; }
+        @keyframes fadeIn { from { opacity: 0; transform: translateY(5px); } to { opacity: 1; transform: translateY(0); } }
+        .no-scrollbar::-webkit-scrollbar { display: none; }
+        .no-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
+        .mobile-nav-item.active { color: #4F46E5; }
+        .mobile-nav-item.active .icon-bg { background-color: #EEF2FF; }
+        
+        /* Modals */
+        .modal-overlay { background: rgba(0,0,0,0.4); backdrop-filter: blur(2px); }
+        .modal { transform: scale(0.95); opacity: 0; transition: all 0.2s ease; }
+        .modal.show { transform: scale(1); opacity: 1; }
+    </style>
+</head>
+<body class="bg-background text-gray-800 h-screen overflow-hidden flex flex-col">
+
+    <!-- Header Desktop / Top Bar -->
+    <header class="bg-surface shadow-sm z-20 relative">
+        <div class="max-w-4xl mx-auto px-4 h-16 flex items-center justify-between">
+            <div class="flex items-center gap-3">
+                <div class="w-10 h-10 bg-primary text-white rounded-xl flex items-center justify-center shadow-lg shadow-primary/30">
+                    <i class="fa-solid fa-wallet text-xl"></i>
+                </div>
+                <h1 class="text-xl font-bold tracking-tight text-gray-900">Mis Finanzas</h1>
+            </div>
+            <div id="cloudStatus" class="flex items-center gap-2 px-3 py-1.5 rounded-full bg-gray-100 text-xs font-medium text-gray-500 transition-colors">
+                <i class="fa-solid fa-cloud"></i> <span id="cloudStatusText">Conectando...</span>
+            </div>
+        </div>
+    </header>
+
+    <!-- Main Content Area -->
+    <main class="flex-1 overflow-y-auto p-4 md:p-6 pb-24 md:pb-6 relative scroll-smooth">
+        
+        <!-- ==================== TAB 1: DASHBOARD ==================== -->
+        <div id="tab-dashboard" class="tab-content active max-w-4xl mx-auto space-y-6">
+            
+            <!-- Cabecera de Tab -->
+            <div class="flex justify-between items-center bg-white p-3 rounded-2xl shadow-sm border border-gray-100">
+                <h2 class="text-lg font-bold text-gray-800 ml-2">Resumen General</h2>
+                <select id="filtroPeriodo" class="bg-gray-50 border border-gray-200 text-gray-700 rounded-xl px-4 py-2 text-sm font-medium focus:ring-2 focus:ring-primary/50 outline-none cursor-pointer">
+                    <option value="mes_actual">Este Mes</option>
+                    <option value="ano_actual">Este Año</option>
+                    <option value="todo" selected>Todo el tiempo</option>
+                </select>
+            </div>
+
+            <!-- Tarjetas Principales -->
+            <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+                <div class="bg-white rounded-2xl shadow-sm border border-gray-100 p-5 relative overflow-hidden">
+                    <div class="absolute -right-4 -top-4 w-16 h-16 bg-primary/10 rounded-full"></div>
+                    <p class="text-sm font-medium text-gray-500 mb-1">Saldo Total</p>
+                    <h3 id="dashSaldo" class="text-3xl font-bold text-gray-900">€0.00</h3>
+                </div>
+                <div class="bg-white rounded-2xl shadow-sm border border-gray-100 p-5 relative overflow-hidden">
+                    <div class="absolute -right-4 -top-4 w-16 h-16 bg-success/10 rounded-full"></div>
+                    <p class="text-sm font-medium text-gray-500 mb-1">Total Ingresos</p>
+                    <h3 id="dashIngresos" class="text-2xl font-bold text-success">€0.00</h3>
+                </div>
+                <div class="bg-white rounded-2xl shadow-sm border border-gray-100 p-5 relative overflow-hidden">
+                    <div class="absolute -right-4 -top-4 w-16 h-16 bg-danger/10 rounded-full"></div>
+                    <p class="text-sm font-medium text-gray-500 mb-1">Total Gastos</p>
+                    <h3 id="dashGastos" class="text-2xl font-bold text-danger">€0.00</h3>
+                </div>
+            </div>
+
+            <!-- Botón IA -->
+            <button onclick="window.consultarAsesorIA()" class="w-full bg-gradient-to-r from-indigo-500 via-purple-500 to-pink-500 text-white rounded-2xl p-4 flex items-center justify-center gap-3 shadow-lg hover:shadow-xl transition-all font-semibold">
+                <i class="fa-solid fa-wand-magic-sparkles"></i>
+                Pedir consejo al Asesor IA
+            </button>
+
+            <!-- Gráfico y Desglose -->
+            <div class="bg-white rounded-2xl shadow-sm border border-gray-100 p-5 flex flex-col md:flex-row gap-6">
+                <div class="w-full md:w-1/2">
+                    <h3 class="text-lg font-bold text-gray-800 mb-4">Gastos por Categoría</h3>
+                    <div class="relative h-56 w-full flex justify-center items-center">
+                        <canvas id="gastosChart"></canvas>
+                        <div id="noDataChart" class="absolute inset-0 flex flex-col items-center justify-center bg-white z-10 hidden">
+                            <i class="fa-solid fa-chart-pie text-4xl text-gray-200 mb-2"></i>
+                            <p class="text-gray-400 text-sm">Añade gastos para ver el gráfico</p>
+                        </div>
+                    </div>
+                </div>
+                <div class="w-full md:w-1/2 flex flex-col">
+                    <h4 class="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-3">Detalle Exacto</h4>
+                    <div id="listaDesgloseGastos" class="space-y-2 max-h-56 overflow-y-auto pr-2">
+                        <!-- Inyectado por JS -->
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- ==================== TAB 2: AÑADIR ==================== -->
+        <div id="tab-add" class="tab-content max-w-lg mx-auto">
+            <div class="bg-white rounded-2xl shadow-sm border border-gray-100 p-5 mb-6">
+                
+                <h2 class="text-xl font-bold text-gray-800 mb-4">Nueva Transacción</h2>
+                
+                <!-- Smart Input IA -->
+                <div class="mb-6 p-4 bg-indigo-50 rounded-xl border border-indigo-100">
+                    <label class="block text-xs font-semibold text-indigo-800 uppercase tracking-wider mb-2"><i class="fa-solid fa-bolt mr-1"></i> Entrada Inteligente IA</label>
+                    <div class="flex gap-2">
+                        <input type="text" id="aiInput" placeholder="Ej: Me gasté 45€ en el supermercado hoy" class="flex-1 bg-white border border-indigo-200 text-gray-700 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-indigo-400">
+                        <button onclick="window.procesarEntradaInteligente()" class="bg-indigo-600 hover:bg-indigo-700 text-white px-4 py-2 rounded-lg text-sm font-medium transition-colors">
+                            <i class="fa-solid fa-magic"></i>
+                        </button>
+                    </div>
+                </div>
+
+                <form id="formTransaccion" onsubmit="window.guardarTransaccion(event)" class="space-y-4">
+                    <!-- Selector Tipo -->
+                    <div class="flex p-1 bg-gray-100 rounded-xl">
+                        <label class="flex-1 text-center relative cursor-pointer">
+                            <input type="radio" name="tipo" value="gasto" class="peer sr-only" checked onchange="window.actualizarSelectCategorias()">
+                            <div class="py-2 text-sm font-semibold rounded-lg text-gray-500 peer-checked:bg-white peer-checked:text-danger peer-checked:shadow-sm transition-all">Gasto</div>
+                        </label>
+                        <label class="flex-1 text-center relative cursor-pointer">
+                            <input type="radio" name="tipo" value="ingreso" class="peer sr-only" onchange="window.actualizarSelectCategorias()">
+                            <div class="py-2 text-sm font-semibold rounded-lg text-gray-500 peer-checked:bg-white peer-checked:text-success peer-checked:shadow-sm transition-all">Ingreso</div>
+                        </label>
+                    </div>
+
+                    <div class="grid grid-cols-2 gap-4">
+                        <div>
+                            <label class="block text-xs font-semibold text-gray-500 uppercase mb-1">Monto (€)</label>
+                            <input type="number" id="formMonto" step="0.01" min="0.01" required class="w-full border border-gray-200 rounded-xl px-4 py-3 font-semibold text-lg focus:outline-none focus:border-primary focus:ring-1 focus:ring-primary transition-colors" placeholder="0.00">
+                        </div>
+                        <div>
+                            <label class="block text-xs font-semibold text-gray-500 uppercase mb-1">Fecha</label>
+                            <input type="date" id="formFecha" required class="w-full border border-gray-200 rounded-xl px-4 py-3 text-gray-700 focus:outline-none focus:border-primary focus:ring-1 focus:ring-primary transition-colors">
+                        </div>
+                    </div>
+
+                    <div>
+                        <label class="block text-xs font-semibold text-gray-500 uppercase mb-1">Categoría</label>
+                        <select id="formCategoria" required class="w-full border border-gray-200 rounded-xl px-4 py-3 text-gray-700 focus:outline-none focus:border-primary focus:ring-1 focus:ring-primary transition-colors">
+                            <!-- Inyectado por JS -->
+                        </select>
+                    </div>
+
+                    <div>
+                        <label class="block text-xs font-semibold text-gray-500 uppercase mb-1">Concepto / Descripción</label>
+                        <input type="text" id="formConcepto" required class="w-full border border-gray-200 rounded-xl px-4 py-3 text-gray-700 focus:outline-none focus:border-primary focus:ring-1 focus:ring-primary transition-colors" placeholder="Ej: Compra semanal">
+                    </div>
+
+                    <div class="pt-2">
+                        <label class="flex items-center gap-2 cursor-pointer">
+                            <input type="checkbox" id="formRecurrente" class="w-4 h-4 text-primary rounded border-gray-300 focus:ring-primary">
+                            <span class="text-sm font-medium text-gray-700">Esta transacción es recurrente</span>
+                        </label>
+                    </div>
+                    
+                    <div id="recurrentOptions" class="hidden pl-6 pt-2">
+                        <label class="block text-xs font-semibold text-gray-500 uppercase mb-1">Frecuencia</label>
+                        <select id="formFrecuencia" class="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm text-gray-700">
+                            <option value="mensual">Mensual (mismo día cada mes)</option>
+                            <option value="semanal">Semanal (mismo día cada semana)</option>
+                            <option value="anual">Anual (mismo día cada año)</option>
+                        </select>
+                    </div>
+
+                    <button type="submit" class="w-full bg-primary hover:bg-indigo-700 text-white rounded-xl py-3.5 font-bold shadow-md shadow-primary/30 transition-colors mt-4">
+                        Guardar Transacción
+                    </button>
+                </form>
+            </div>
+        </div>
+
+        <!-- ==================== TAB 3: HISTORIAL ==================== -->
+        <div id="tab-history" class="tab-content max-w-3xl mx-auto h-full flex flex-col">
+            <div class="bg-white p-3 rounded-2xl shadow-sm border border-gray-100 mb-4 sticky top-0 z-10 flex gap-2 items-center">
+                <div class="flex gap-2 flex-1">
+                    <button class="filter-btn active flex-1 py-2 rounded-lg text-sm font-medium bg-gray-100 text-gray-800 transition-colors" data-filter="all">Todos</button>
+                    <button class="filter-btn flex-1 py-2 rounded-lg text-sm font-medium hover:bg-green-50 text-success transition-colors" data-filter="ingreso">Ingresos</button>
+                    <button class="filter-btn flex-1 py-2 rounded-lg text-sm font-medium hover:bg-red-50 text-danger transition-colors" data-filter="gasto">Gastos</button>
+                </div>
+                <button onclick="window.exportarCSV()" class="bg-green-50 hover:bg-green-100 text-green-700 w-10 h-10 rounded-lg flex items-center justify-center transition-colors shrink-0 shadow-sm border border-green-100" title="Exportar a CSV / Excel">
+                    <i class="fa-solid fa-file-excel text-lg"></i>
+                </button>
+            </div>
+
+            <div id="listaTransacciones" class="space-y-3 pb-6">
+                <!-- Items generados por JS -->
+            </div>
+        </div>
+
+        <!-- ==================== TAB 4: AJUSTES ==================== -->
+        <div id="tab-settings" class="tab-content max-w-lg mx-auto space-y-6">
+            
+            <div class="bg-white rounded-2xl shadow-sm border border-gray-100 p-5">
+                <h2 class="text-xl font-bold text-gray-800 mb-4"><i class="fa-solid fa-tags text-primary mr-2"></i> Mis Categorías</h2>
+                
+                <form onsubmit="window.guardarCategoria(event)" class="mb-6 flex gap-2">
+                    <select id="newCatTipo" class="border border-gray-200 rounded-lg px-2 py-2 text-sm bg-gray-50 focus:outline-none">
+                        <option value="gastos">Gasto</option>
+                        <option value="ingresos">Ingreso</option>
+                    </select>
+                    <input type="text" id="newCatEmoji" placeholder="🍔" maxlength="2" required class="w-12 border border-gray-200 rounded-lg text-center text-lg focus:outline-none">
+                    <input type="text" id="newCatNombre" placeholder="Nombre" required class="flex-1 border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none">
+                    <button type="submit" class="bg-gray-800 text-white px-3 rounded-lg"><i class="fa-solid fa-plus"></i></button>
+                </form>
+
+                <div class="space-y-4">
+                    <div>
+                        <h3 class="text-sm font-semibold text-gray-500 uppercase mb-2">Gastos</h3>
+                        <div id="listaCatGastos" class="flex flex-wrap gap-2"></div>
+                    </div>
+                    <div>
+                        <h3 class="text-sm font-semibold text-gray-500 uppercase mb-2">Ingresos</h3>
+                        <div id="listaCatIngresos" class="flex flex-wrap gap-2"></div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="bg-white rounded-2xl shadow-sm border border-gray-100 p-5">
+                <h2 class="text-xl font-bold text-gray-800 mb-4"><i class="fa-solid fa-rotate text-primary mr-2"></i> Movimientos Recurrentes</h2>
+                <div id="listaRecurrentes" class="space-y-3">
+                    <!-- JS Inyecta recurrentes -->
+                </div>
+            </div>
+            
+            <div class="text-center pb-6">
+                <p class="text-xs text-gray-400">Desarrollado con ❤️ y Gemini</p>
+            </div>
+        </div>
+
+    </main>
+
+    <!-- Navigation Bottom Bar (Mobile First) -->
+    <nav class="bg-white border-t border-gray-200 fixed bottom-0 w-full z-20 pb-safe md:relative md:border-t-0 md:bg-transparent md:bottom-auto">
+        <div class="max-w-md mx-auto flex justify-between px-6 py-2 md:max-w-4xl md:justify-center md:gap-8 md:bg-white md:rounded-full md:shadow-lg md:border md:mb-6 md:py-3">
+            <button onclick="window.switchTab('dashboard')" class="mobile-nav-item active flex flex-col items-center gap-1 p-2 text-gray-400 hover:text-primary transition-colors w-16" data-tab="tab-dashboard">
+                <div class="icon-bg w-8 h-8 rounded-full flex items-center justify-center transition-colors">
+                    <i class="fa-solid fa-chart-pie text-lg"></i>
+                </div>
+                <span class="text-[10px] font-medium">Resumen</span>
+            </button>
+            <button onclick="window.switchTab('add')" class="mobile-nav-item flex flex-col items-center gap-1 p-2 text-gray-400 hover:text-primary transition-colors w-16" data-tab="tab-add">
+                <div class="icon-bg w-8 h-8 rounded-full flex items-center justify-center transition-colors">
+                    <i class="fa-solid fa-plus text-lg"></i>
+                </div>
+                <span class="text-[10px] font-medium">Añadir</span>
+            </button>
+            <button onclick="window.switchTab('history')" class="mobile-nav-item flex flex-col items-center gap-1 p-2 text-gray-400 hover:text-primary transition-colors w-16" data-tab="tab-history">
+                <div class="icon-bg w-8 h-8 rounded-full flex items-center justify-center transition-colors">
+                    <i class="fa-solid fa-list text-lg"></i>
+                </div>
+                <span class="text-[10px] font-medium">Historial</span>
+            </button>
+            <button onclick="window.switchTab('settings')" class="mobile-nav-item flex flex-col items-center gap-1 p-2 text-gray-400 hover:text-primary transition-colors w-16" data-tab="tab-settings">
+                <div class="icon-bg w-8 h-8 rounded-full flex items-center justify-center transition-colors">
+                    <i class="fa-solid fa-gear text-lg"></i>
+                </div>
+                <span class="text-[10px] font-medium">Ajustes</span>
+            </button>
+        </div>
+    </nav>
+
+    <!-- Custom Modals -->
+    <!-- Alert Modal -->
+    <div id="alertModal" class="modal-overlay fixed inset-0 z-50 hidden flex items-center justify-center">
+        <div class="modal bg-white rounded-2xl p-6 max-w-sm w-full mx-4 shadow-2xl">
+            <h3 id="alertTitle" class="text-lg font-bold text-gray-900 mb-2">Alerta</h3>
+            <p id="alertMessage" class="text-gray-600 mb-6 text-sm"></p>
+            <button onclick="window.closeModal('alertModal')" class="w-full bg-primary text-white font-semibold py-2 rounded-xl">Entendido</button>
+        </div>
+    </div>
+
+    <!-- Confirm Modal -->
+    <div id="confirmModal" class="modal-overlay fixed inset-0 z-50 hidden flex items-center justify-center">
+        <div class="modal bg-white rounded-2xl p-6 max-w-sm w-full mx-4 shadow-2xl">
+            <h3 id="confirmTitle" class="text-lg font-bold text-gray-900 mb-2">Confirmar</h3>
+            <p id="confirmMessage" class="text-gray-600 mb-6 text-sm"></p>
+            <div class="flex gap-3">
+                <button onclick="window.closeModal('confirmModal')" class="flex-1 bg-gray-100 text-gray-700 font-semibold py-2 rounded-xl">Cancelar</button>
+                <button id="confirmBtnAction" class="flex-1 bg-danger text-white font-semibold py-2 rounded-xl">Confirmar</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- AI Modal -->
+    <div id="aiModal" class="modal-overlay fixed inset-0 z-50 hidden flex items-center justify-center">
+        <div class="modal bg-white rounded-2xl p-6 max-w-md w-full mx-4 shadow-2xl max-h-[80vh] flex flex-col">
+            <div class="flex items-center gap-3 mb-4 border-b border-gray-100 pb-4">
+                <div class="w-10 h-10 rounded-full bg-gradient-to-tr from-indigo-500 to-pink-500 flex items-center justify-center text-white">
+                    <i class="fa-solid fa-robot"></i>
+                </div>
+                <div>
+                    <h3 class="text-lg font-bold text-gray-900">Asesor Financiero IA</h3>
+                    <p class="text-xs text-gray-500">Gemini está analizando tus datos...</p>
+                </div>
+            </div>
+            <div id="aiContent" class="overflow-y-auto flex-1 text-sm text-gray-700 space-y-3 prose pr-2">
+                <div class="flex justify-center items-center py-10">
+                    <i class="fa-solid fa-circle-notch fa-spin text-3xl text-primary"></i>
+                </div>
+            </div>
+            <div class="pt-4 mt-4 border-t border-gray-100">
+                <button onclick="window.closeModal('aiModal')" class="w-full bg-gray-100 hover:bg-gray-200 text-gray-800 font-semibold py-2.5 rounded-xl transition-colors">Cerrar</button>
+            </div>
+        </div>
+    </div>
+
+    <script type="module">
+        import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
+        import { getAuth, signInAnonymously, signInWithCustomToken } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
+        import { getFirestore, doc, setDoc, deleteDoc, onSnapshot, collection } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
+
+        // 1. CONFIGURACIÓN INICIAL Y ESTADO
+        let transacciones = [];
+        let recurrentes = [];
+        let categorias = {
+            gastos: [
+                {id: 'comida', nombre: 'Comida', emoji: '🍔'},
+                {id: 'transporte', nombre: 'Transporte', emoji: '🚗'},
+                {id: 'hogar', nombre: 'Hogar', emoji: '🏠'},
+                {id: 'ocio', nombre: 'Ocio', emoji: '🍿'},
+                {id: 'supermercado', nombre: 'Super', emoji: '🛒'},
+                {id: 'salud', nombre: 'Salud', emoji: '🏥'},
+                {id: 'otros', nombre: 'Otros', emoji: '❓'}
+            ],
+            ingresos: [
+                {id: 'salario', nombre: 'Salario', emoji: '💰'},
+                {id: 'inversiones', nombre: 'Inversiones', emoji: '📈'},
+                {id: 'regalos', nombre: 'Regalos', emoji: '🎁'},
+                {id: 'otros_ing', nombre: 'Otros', emoji: '❓'}
+            ]
+        };
+
+        let db, auth;
+        let userId = null;
+        let isOnline = false;
+        let unsubscribeTxs = null;
+        let unsubscribeCats = null;
+        let unsubscribeRecs = null;
+        let chartInstance = null;
+
+        const appId = typeof __app_id !== 'undefined' ? __app_id : 'finanzas-app';
+        const apiKey = ""; // Canvas injects Gemini API Key
+
+        // 2. UTILIDADES UI (Modales y Tabs)
+        const formatMoneda = (num) => new Intl.NumberFormat('es-ES', { style: 'currency', currency: 'EUR' }).format(num);
+        const formatFecha = (fechaStr) => {
+            const [y, m, d] = fechaStr.split('-');
+            return `${d}/${m}/${y}`;
+        };
+
+        window.showAlert = (title, message) => {
+            document.getElementById('alertTitle').innerText = title;
+            document.getElementById('alertMessage').innerText = message;
+            const modal = document.getElementById('alertModal');
+            modal.classList.remove('hidden');
+            setTimeout(() => modal.querySelector('.modal').classList.add('show'), 10);
+        };
+
+        window.showConfirm = (title, message, onConfirm) => {
+            document.getElementById('confirmTitle').innerText = title;
+            document.getElementById('confirmMessage').innerText = message;
+            const btn = document.getElementById('confirmBtnAction');
+            btn.onclick = () => { window.closeModal('confirmModal'); onConfirm(); };
+            const modal = document.getElementById('confirmModal');
+            modal.classList.remove('hidden');
+            setTimeout(() => modal.querySelector('.modal').classList.add('show'), 10);
+        };
+
+        window.closeModal = (id) => {
+            const modal = document.getElementById(id);
+            modal.querySelector('.modal').classList.remove('show');
+            setTimeout(() => modal.classList.add('hidden'), 200);
+        };
+
+        window.switchTab = (tabName) => {
+            document.querySelectorAll('.tab-content').forEach(t => t.classList.remove('active'));
+            document.querySelectorAll('.mobile-nav-item').forEach(i => i.classList.remove('active'));
+            document.getElementById(`tab-${tabName}`).classList.add('active');
+            document.querySelector(`.mobile-nav-item[data-tab="tab-${tabName}"]`).classList.add('active');
+            
+            if(tabName === 'dashboard') window.actualizarDashboard();
+        };
+
+        // UI Event Listeners estáticos
+        document.getElementById('formFecha').valueAsDate = new Date();
+        document.getElementById('formRecurrente').addEventListener('change', (e) => {
+            document.getElementById('recurrentOptions').classList.toggle('hidden', !e.target.checked);
+        });
+        document.querySelectorAll('.filter-btn').forEach(btn => {
+            btn.addEventListener('click', (e) => {
+                document.querySelectorAll('.filter-btn').forEach(b => b.classList.replace('bg-gray-100', 'bg-transparent'));
+                e.target.classList.add('bg-gray-100');
+                window.renderizarHistorial(e.target.dataset.filter);
+            });
+        });
+        document.getElementById('filtroPeriodo').addEventListener('change', () => window.actualizarDashboard());
+
+        // 3. INICIALIZACIÓN DE DATOS (NUBE Y LOCAL)
+        const initFirebase = async () => {
+            try {
+                if (typeof __firebase_config === 'undefined') throw new Error("No config");
+                const app = initializeApp(JSON.parse(__firebase_config));
+                db = getFirestore(app);
+                auth = getAuth(app);
+                
+                const token = typeof __initial_auth_token !== 'undefined' ? __initial_auth_token : null;
+                if (token) {
+                    await signInWithCustomToken(auth, token);
+                } else {
+                    await signInAnonymously(auth);
+                }
+
+                userId = auth.currentUser.uid;
+                isOnline = true;
+                
+                document.getElementById('cloudStatusText').innerText = "Online";
+                document.getElementById('cloudStatus').classList.replace('bg-gray-100', 'bg-green-100');
+                document.getElementById('cloudStatus').classList.replace('text-gray-500', 'text-green-700');
+
+                cargarDatosNube();
+            } catch (error) {
+                console.warn("Modo Local (Offline):", error);
+                isOnline = false;
+                document.getElementById('cloudStatusText').innerText = "Local";
+                cargarDatosLocales();
+            }
+        };
+
+        const cargarDatosNube = () => {
+            if (!userId) return;
+
+            // Escuchar Categorías
+            unsubscribeCats = onSnapshot(collection(db, 'artifacts', appId, 'users', userId, 'categorias'), (snapshot) => {
+                if (!snapshot.empty) {
+                    const dbCats = snapshot.docs.map(doc => doc.data());
+                    const configCats = dbCats.find(c => c.id === 'mis_categorias');
+                    if (configCats) {
+                        categorias = configCats.data;
+                    }
+                } else {
+                    // Guardar iniciales
+                    setDoc(doc(db, 'artifacts', appId, 'users', userId, 'categorias', 'mis_categorias'), { data: categorias });
+                }
+                window.actualizarSelectCategorias();
+                window.renderizarAjustesCategorias();
+            }, console.error);
+
+            // Escuchar Transacciones
+            unsubscribeTxs = onSnapshot(collection(db, 'artifacts', appId, 'users', userId, 'transacciones'), (snapshot) => {
+                transacciones = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+                transacciones.sort((a, b) => new Date(b.fecha) - new Date(a.fecha) || b.timestamp - a.timestamp);
+                window.actualizarDashboard();
+                window.renderizarHistorial();
+            }, console.error);
+
+            // Escuchar Recurrentes
+            unsubscribeRecs = onSnapshot(collection(db, 'artifacts', appId, 'users', userId, 'recurrentes'), (snapshot) => {
+                recurrentes = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+                window.renderizarAjustesRecurrentes();
+                window.procesarRecurrentes();
+            }, console.error);
+        };
+
+        const cargarDatosLocales = () => {
+            const localTxs = localStorage.getItem('txs_local');
+            if (localTxs) transacciones = JSON.parse(localTxs);
+
+            const localCats = localStorage.getItem('cats_local');
+            if (localCats) categorias = JSON.parse(localCats);
+
+            const localRecs = localStorage.getItem('recs_local');
+            if (localRecs) recurrentes = JSON.parse(localRecs);
+
+            window.actualizarSelectCategorias();
+            window.renderizarAjustesCategorias();
+            window.renderizarAjustesRecurrentes();
+            window.actualizarDashboard();
+            window.renderizarHistorial();
+            window.procesarRecurrentes();
+        };
+
+        const guardarDatosLocales = () => {
+            if (!isOnline) {
+                localStorage.setItem('txs_local', JSON.stringify(transacciones));
+                localStorage.setItem('cats_local', JSON.stringify(categorias));
+                localStorage.setItem('recs_local', JSON.stringify(recurrentes));
+            }
+        };
+
+        // 4. FUNCIONES DE CATEGORÍAS
+        const getEmojiCategoria = (tipo, catId) => {
+            const list = categorias[tipo] || [];
+            const cat = list.find(c => c.id === catId);
+            return cat ? cat.emoji : '🔹';
+        };
+
+        const getNombreCategoria = (tipo, catId) => {
+            const list = categorias[tipo] || [];
+            const cat = list.find(c => c.id === catId);
+            return cat ? cat.nombre : 'Desconocida';
+        };
+
+        window.actualizarSelectCategorias = () => {
+            const tipo = document.querySelector('input[name="tipo"]:checked').value;
+            const select = document.getElementById('formCategoria');
+            select.innerHTML = '';
+            
+            const catsList = tipo === 'gasto' ? categorias.gastos : categorias.ingresos;
+            catsList.forEach(c => {
+                const opt = document.createElement('option');
+                opt.value = c.id;
+                opt.innerText = `${c.emoji} ${c.nombre}`;
+                select.appendChild(opt);
+            });
+        };
+
+        // 5. FUNCIONES DE RENDERIZADO UI
+        window.actualizarDashboard = () => {
+            let ingresos = 0, gastos = 0;
+            const gastosPorCategoria = {};
+            
+            const filtro = document.getElementById('filtroPeriodo').value;
+            const hoy = new Date();
+            const mesActual = `${hoy.getFullYear()}-${String(hoy.getMonth() + 1).padStart(2, '0')}`;
+            const anoActual = `${hoy.getFullYear()}`;
+
+            const txsFiltradas = transacciones.filter(tx => {
+                if (filtro === 'mes_actual') return tx.fecha.startsWith(mesActual);
+                if (filtro === 'ano_actual') return tx.fecha.startsWith(anoActual);
+                return true;
+            });
+
+            txsFiltradas.forEach(tx => {
+                const monto = parseFloat(tx.monto);
+                if (tx.tipo === 'ingreso') {
+                    ingresos += monto;
+                } else {
+                    gastos += monto;
+                    gastosPorCategoria[tx.categoria] = (gastosPorCategoria[tx.categoria] || 0) + monto;
+                }
+            });
+
+            const saldo = ingresos - gastos;
+            
+            document.getElementById('dashSaldo').innerText = formatMoneda(saldo);
+            document.getElementById('dashSaldo').className = `text-3xl font-bold ${saldo >= 0 ? 'text-gray-900' : 'text-danger'}`;
+            document.getElementById('dashIngresos').innerText = formatMoneda(ingresos);
+            document.getElementById('dashGastos').innerText = formatMoneda(gastos);
+
+            // Gráfico
+            const ctx = document.getElementById('gastosChart').getContext('2d');
+            const noData = document.getElementById('noDataChart');
+            
+            if (chartInstance) {
+                chartInstance.destroy();
+                chartInstance = null;
+            }
+
+            if (gastos === 0) {
+                noData.classList.remove('hidden');
+                document.getElementById('listaDesgloseGastos').innerHTML = '<p class="text-sm text-gray-400 text-center mt-4">Sin datos</p>';
+                return;
+            } 
+            
+            noData.classList.add('hidden');
+            
+            const labels = Object.keys(gastosPorCategoria).map(c => getNombreCategoria('gastos', c));
+            const data = Object.values(gastosPorCategoria);
+            const bgColors = ['#4F46E5', '#10B981', '#F59E0B', '#EF4444', '#8B5CF6', '#EC4899', '#14B8A6'];
+
+            chartInstance = new Chart(ctx, {
+                type: 'doughnut',
+                data: {
+                    labels: labels,
+                    datasets: [{ data: data, backgroundColor: bgColors, borderWidth: 0 }]
+                },
+                options: {
+                    responsive: true, maintainAspectRatio: false,
+                    plugins: { legend: { display: false } },
+                    cutout: '65%'
+                }
+            });
+
+            // Lista Desglose
+            const desglose = document.getElementById('listaDesgloseGastos');
+            desglose.innerHTML = '';
+            
+            const catOrdenadas = Object.entries(gastosPorCategoria).sort((a,b) => b[1]-a[1]);
+            catOrdenadas.forEach(([catId, monto]) => {
+                const div = document.createElement('div');
+                div.className = 'flex justify-between items-center text-sm py-2 border-b border-gray-50 last:border-0 hover:bg-gray-50 px-2 rounded-lg';
+                const porc = Math.round((monto/gastos)*100);
+                div.innerHTML = `
+                    <div class="flex items-center gap-3">
+                        <span class="w-8 h-8 rounded-full bg-gray-100 flex items-center justify-center text-base">${getEmojiCategoria('gastos', catId)}</span>
+                        <div class="flex flex-col">
+                            <span class="font-medium text-gray-800">${getNombreCategoria('gastos', catId)}</span>
+                            <span class="text-[10px] text-gray-400 font-semibold">${porc}%</span>
+                        </div>
+                    </div>
+                    <span class="font-bold text-gray-900">${formatMoneda(monto)}</span>
+                `;
+                desglose.appendChild(div);
+            });
+        };
+
+        window.renderizarHistorial = (filtro = 'all') => {
+            const contenedor = document.getElementById('listaTransacciones');
+            contenedor.innerHTML = '';
+
+            const txsFiltradas = transacciones.filter(tx => filtro === 'all' || tx.tipo === filtro);
+
+            if (txsFiltradas.length === 0) {
+                contenedor.innerHTML = `
+                    <div class="text-center py-10 bg-white rounded-2xl shadow-sm border border-gray-100">
+                        <i class="fa-solid fa-receipt text-4xl text-gray-200 mb-3"></i>
+                        <p class="text-gray-500 font-medium">No hay transacciones</p>
+                    </div>`;
+                return;
+            }
+
+            let fechaActual = '';
+            txsFiltradas.forEach(tx => {
+                if (tx.fecha !== fechaActual) {
+                    fechaActual = tx.fecha;
+                    const divisor = document.createElement('div');
+                    divisor.className = 'text-xs font-bold text-gray-400 uppercase tracking-wider mt-4 mb-2 ml-1';
+                    divisor.innerText = formatFecha(tx.fecha);
+                    contenedor.appendChild(divisor);
+                }
+
+                const esIngreso = tx.tipo === 'ingreso';
+                const div = document.createElement('div');
+                div.className = 'bg-white rounded-xl shadow-sm border border-gray-100 p-3 flex justify-between items-center hover:shadow-md transition-all group';
+                
+                div.innerHTML = `
+                    <div class="flex items-center gap-3">
+                        <div class="w-10 h-10 rounded-full flex items-center justify-center text-xl ${esIngreso ? 'bg-green-50' : 'bg-red-50'}">
+                            ${getEmojiCategoria(tx.tipo === 'ingreso' ? 'ingresos' : 'gastos', tx.categoria)}
+                        </div>
+                        <div>
+                            <p class="font-bold text-gray-800 text-sm leading-tight">${tx.concepto}</p>
+                            <p class="text-xs text-gray-500 mt-0.5">${getNombreCategoria(tx.tipo === 'ingreso' ? 'ingresos' : 'gastos', tx.categoria)}</p>
+                        </div>
+                    </div>
+                    <div class="flex items-center gap-3">
+                        <span class="font-bold ${esIngreso ? 'text-success' : 'text-danger'}">
+                            ${esIngreso ? '+' : '-'}${formatMoneda(tx.monto)}
+                        </span>
+                        <button onclick="window.borrarTransaccion('${tx.id}')" class="text-gray-300 hover:text-danger p-2 opacity-0 group-hover:opacity-100 transition-opacity md:opacity-100">
+                            <i class="fa-solid fa-trash"></i>
+                        </button>
+                    </div>
+                `;
+                contenedor.appendChild(div);
+            });
+        };
+
+        window.renderizarAjustesCategorias = () => {
+            const genHtml = (list, tipo) => list.map(c => `
+                <div class="inline-flex items-center gap-1 bg-gray-50 border border-gray-200 px-3 py-1.5 rounded-full text-sm font-medium">
+                    <span>${c.emoji}</span> <span>${c.nombre}</span>
+                    <button onclick="window.borrarCategoria('${tipo}', '${c.id}')" class="text-gray-400 hover:text-danger ml-1"><i class="fa-solid fa-xmark"></i></button>
+                </div>
+            `).join('');
+            
+            document.getElementById('listaCatGastos').innerHTML = genHtml(categorias.gastos, 'gastos');
+            document.getElementById('listaCatIngresos').innerHTML = genHtml(categorias.ingresos, 'ingresos');
+        };
+
+        window.renderizarAjustesRecurrentes = () => {
+            const cont = document.getElementById('listaRecurrentes');
+            if (recurrentes.length === 0) {
+                cont.innerHTML = '<p class="text-sm text-gray-400">No hay movimientos recurrentes configurados.</p>';
+                return;
+            }
+            cont.innerHTML = recurrentes.map(r => `
+                <div class="flex justify-between items-center bg-gray-50 p-3 rounded-xl border border-gray-100">
+                    <div>
+                        <p class="font-semibold text-sm">${r.concepto} <span class="text-xs font-normal bg-indigo-100 text-indigo-700 px-2 py-0.5 rounded ml-1">${r.frecuencia}</span></p>
+                        <p class="text-xs text-gray-500">${formatMoneda(r.monto)} - Próximo chequeo activo</p>
+                    </div>
+                    <button onclick="window.borrarRecurrente('${r.id}')" class="text-red-400 hover:text-danger p-2"><i class="fa-solid fa-trash"></i></button>
+                </div>
+            `).join('');
+        };
+
+        // 6. ACCIONES (Añadir, Borrar, Exportar)
+        window.guardarTransaccion = (e) => {
+            e.preventDefault();
+            const tipo = document.querySelector('input[name="tipo"]:checked').value;
+            const monto = parseFloat(document.getElementById('formMonto').value);
+            const fecha = document.getElementById('formFecha').value;
+            const categoria = document.getElementById('formCategoria').value;
+            const concepto = document.getElementById('formConcepto').value;
+            const esRecurrente = document.getElementById('formRecurrente').checked;
+            
+            const id = 'tx_' + Date.now();
+            const payload = { id, tipo, monto, fecha, categoria, concepto, timestamp: Date.now() };
+
+            if (isOnline && userId) {
+                setDoc(doc(db, 'artifacts', appId, 'users', userId, 'transacciones', id), payload);
+                if (esRecurrente) {
+                    const recId = 'rec_' + Date.now();
+                    const freq = document.getElementById('formFrecuencia').value;
+                    setDoc(doc(db, 'artifacts', appId, 'users', userId, 'recurrentes', recId), {
+                        id: recId, tipo, monto, categoria, concepto, frecuencia: freq, ultimaEjecucion: fecha
+                    });
+                }
+            } else {
+                transacciones.push(payload);
+                if (esRecurrente) {
+                    recurrentes.push({
+                        id: 'rec_' + Date.now(), tipo, monto, categoria, concepto, 
+                        frecuencia: document.getElementById('formFrecuencia').value, ultimaEjecucion: fecha
+                    });
+                }
+                guardarDatosLocales();
+                window.renderizarAjustesRecurrentes();
+            }
+
+            e.target.reset();
+            document.getElementById('formFecha').valueAsDate = new Date();
+            document.getElementById('formRecurrente').checked = false;
+            document.getElementById('recurrentOptions').classList.add('hidden');
+            window.showAlert('Éxito', 'Transacción guardada correctamente.');
+        };
+
+        window.borrarTransaccion = (id) => {
+            window.showConfirm('Borrar Registro', '¿Seguro que quieres eliminar esta transacción?', () => {
+                if (isOnline && userId) {
+                    deleteDoc(doc(db, 'artifacts', appId, 'users', userId, 'transacciones', id));
+                } else {
+                    transacciones = transacciones.filter(t => t.id !== id);
+                    guardarDatosLocales();
+                    window.renderizarHistorial();
+                    window.actualizarDashboard();
+                }
+            });
+        };
+
+        window.guardarCategoria = (e) => {
+            e.preventDefault();
+            const tipo = document.getElementById('newCatTipo').value;
+            const emoji = document.getElementById('newCatEmoji').value;
+            const nombre = document.getElementById('newCatNombre').value;
+            const id = nombre.toLowerCase().replace(/[^a-z0-9]/g, '_') + '_' + Date.now();
+
+            categorias[tipo].push({ id, emoji, nombre });
+
+            if (isOnline && userId) {
+                setDoc(doc(db, 'artifacts', appId, 'users', userId, 'categorias', 'mis_categorias'), { data: categorias });
+            } else {
+                guardarDatosLocales();
+                window.renderizarAjustesCategorias();
+                window.actualizarSelectCategorias();
+            }
+            e.target.reset();
+        };
+
+        window.borrarCategoria = (tipo, id) => {
+            window.showConfirm('Borrar Categoría', '¿Eliminar categoría? Las transacciones antiguas mantendrán su historial.', () => {
+                categorias[tipo] = categorias[tipo].filter(c => c.id !== id);
+                if (isOnline && userId) {
+                    setDoc(doc(db, 'artifacts', appId, 'users', userId, 'categorias', 'mis_categorias'), { data: categorias });
+                } else {
+                    guardarDatosLocales();
+                    window.renderizarAjustesCategorias();
+                    window.actualizarSelectCategorias();
+                }
+            });
+        };
+
+        window.borrarRecurrente = (id) => {
+            window.showConfirm('Borrar Recurrencia', 'Se dejarán de generar automáticamente.', () => {
+                if (isOnline && userId) {
+                    deleteDoc(doc(db, 'artifacts', appId, 'users', userId, 'recurrentes', id));
+                } else {
+                    recurrentes = recurrentes.filter(r => r.id !== id);
+                    guardarDatosLocales();
+                    window.renderizarAjustesRecurrentes();
+                }
+            });
+        };
+
+        window.exportarCSV = () => {
+            if (transacciones.length === 0) return window.showAlert('Sin datos', 'No hay nada que exportar.');
+            let csvContent = "\uFEFFFecha,Tipo,Categoría,Concepto,Monto\n";
+            [...transacciones].sort((a,b)=>new Date(b.fecha)-new Date(a.fecha)).forEach(tx => {
+                const nCat = getNombreCategoria(tx.tipo==='ingreso'?'ingresos':'gastos', tx.categoria);
+                const desc = `"${tx.concepto.replace(/"/g, '""')}"`;
+                csvContent += `${tx.fecha},${tx.tipo.toUpperCase()},${nCat},${desc},${tx.monto}\n`;
+            });
+            const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+            const url = URL.createObjectURL(blob);
+            const link = document.createElement("a");
+            link.href = url;
+            link.download = `Finanzas_${new Date().toISOString().split('T')[0]}.csv`;
+            document.body.appendChild(link); link.click(); document.body.removeChild(link);
+        };
+
+        // 7. FUNCIONES IA Y RECURRENTES AVANZADAS
+        window.procesarRecurrentes = () => {
+            if (recurrentes.length === 0) return;
+            const hoy = new Date();
+            let actualizados = false;
+
+            recurrentes.forEach(r => {
+                let ultima = new Date(r.ultimaEjecucion);
+                let debeEjecutar = false;
+                
+                if (r.frecuencia === 'mensual') {
+                    ultima.setMonth(ultima.getMonth() + 1);
+                    debeEjecutar = hoy >= ultima;
+                } else if (r.frecuencia === 'semanal') {
+                    ultima.setDate(ultima.getDate() + 7);
+                    debeEjecutar = hoy >= ultima;
+                } else if (r.frecuencia === 'anual') {
+                    ultima.setFullYear(ultima.getFullYear() + 1);
+                    debeEjecutar = hoy >= ultima;
+                }
+
+                if (debeEjecutar) {
+                    const strFecha = hoy.toISOString().split('T')[0];
+                    const newTx = {
+                        id: 'tx_aut_' + Date.now() + Math.random(),
+                        tipo: r.tipo, monto: r.monto, categoria: r.categoria,
+                        concepto: r.concepto + ' (Automático)', fecha: strFecha, timestamp: Date.now()
+                    };
+                    
+                    if(isOnline && userId) {
+                        setDoc(doc(db, 'artifacts', appId, 'users', userId, 'transacciones', newTx.id), newTx);
+                        setDoc(doc(db, 'artifacts', appId, 'users', userId, 'recurrentes', r.id), { ...r, ultimaEjecucion: strFecha });
+                    } else {
+                        transacciones.push(newTx);
+                        r.ultimaEjecucion = strFecha;
+                        actualizados = true;
+                    }
+                }
+            });
+            if(actualizados && !isOnline) guardarDatosLocales();
+        };
+
+        const callGemini = async (prompt, system, config = {}) => {
+            const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-3-flash-preview:generateContent?key=${apiKey}`;
+            const payload = {
+                contents: [{ parts: [{ text: prompt }] }],
+                systemInstruction: { parts: [{ text: system }] },
+                ...config
+            };
+            const res = await fetch(url, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
+            const data = await res.json();
+            return data.candidates?.[0]?.content?.parts?.[0]?.text;
+        };
+
+        window.consultarAsesorIA = async () => {
+            if(transacciones.length === 0) return window.showAlert('Faltan Datos', 'Añade transacciones para que la IA te aconseje.');
+            
+            const modal = document.getElementById('aiModal');
+            const cont = document.getElementById('aiContent');
+            cont.innerHTML = '<div class="flex justify-center py-10"><i class="fa-solid fa-circle-notch fa-spin text-3xl text-primary"></i></div>';
+            modal.classList.remove('hidden');
+            setTimeout(() => modal.querySelector('.modal').classList.add('show'), 10);
+
+            const txRecientes = transacciones.slice(0, 30).map(t => `${t.fecha} | ${t.tipo} | ${t.monto}€ | ${getNombreCategoria(t.tipo==='ingreso'?'ingresos':'gastos', t.categoria)}`).join('\n');
+            const prompt = `Analiza esto:\n${txRecientes}`;
+            const sys = "Eres un asesor financiero conciso y amigable. El usuario te da sus últimas 30 transacciones. Resume brevemente su situación (1 párrafo). Detecta su mayor fuga de dinero. Dale 2 consejos prácticos muy breves con viñetas. Formatea tu respuesta en HTML usando <b> para resaltar lo importante, sin usar markdown de bloques.";
+
+            try {
+                const response = await callGemini(prompt, sys);
+                cont.innerHTML = response || '<p>Lo siento, no pude generar el análisis ahora.</p>';
+            } catch (e) {
+                cont.innerHTML = '<p class="text-danger">Hubo un error de conexión con Gemini.</p>';
+            }
+        };
+
+        window.procesarEntradaInteligente = async () => {
+            const input = document.getElementById('aiInput');
+            const texto = input.value.trim();
+            if(!texto) return;
+
+            input.disabled = true;
+            const btn = input.nextElementSibling;
+            btn.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i>';
+
+            const sys = `Extrae los datos de esta transacción financiera. Devuelve SOLO JSON. 
+El año por defecto es ${new Date().getFullYear()}.
+Reglas: 'tipo' debe ser "ingreso" o "gasto". 'categoria' debe ser un ID de esta lista dependiendo del tipo.
+Gastos IDs validos: ${categorias.gastos.map(c=>c.id).join(', ')}.
+Ingresos IDs validos: ${categorias.ingresos.map(c=>c.id).join(', ')}.
+Si no sabes la categoría pon 'otros' o 'otros_ing'.
+Esquema requerido: {"tipo":"gasto/ingreso", "monto":numero, "categoria":"id_cat", "concepto":"texto breve", "fecha":"YYYY-MM-DD"}`;
+            
+            const config = {
+                generationConfig: { responseMimeType: "application/json" }
+            };
+
+            try {
+                const res = await callGemini(texto, sys, config);
+                
+                // Limpiamos los posibles bloques de Markdown (```json ... ```)
+                const jsonLimpio = res.replace(/```json/gi, '').replace(/```/g, '').trim();
+                const data = JSON.parse(jsonLimpio);
+                
+                // Rellenar formulario automáticamente
+                if(data.tipo) {
+                    const radio = document.querySelector(`input[name="tipo"][value="${data.tipo}"]`);
+                    if(radio) {
+                        radio.checked = true;
+                        window.actualizarSelectCategorias(); // Forzar actualización visual
+                    }
+                }
+                if(data.monto) document.getElementById('formMonto').value = data.monto;
+                if(data.fecha) document.getElementById('formFecha').value = data.fecha;
+                if(data.concepto) document.getElementById('formConcepto').value = data.concepto;
+                if(data.categoria) document.getElementById('formCategoria').value = data.categoria;
+                
+                input.value = '';
+                window.showAlert('¡Datos extraídos!', 'Revisa el formulario y dale a Guardar.');
+            } catch(e) {
+                console.error("Error de la IA:", e);
+                window.showAlert('Error', 'No se pudo entender la frase. Rellena el formulario manualmente.');
+            } finally {
+                input.disabled = false;
+                btn.innerHTML = '<i class="fa-solid fa-magic"></i>';
+            }
+        };
+
+        // 8. ARRANQUE APLICACIÓN
+        window.addEventListener('DOMContentLoaded', () => {
+            initFirebase();
+            // Fallback safety if firebase takes too long
+            setTimeout(() => { if (!userId && !isOnline) cargarDatosLocales(); }, 3000);
+        });
+
+    </script>
+</body>
+</html>
